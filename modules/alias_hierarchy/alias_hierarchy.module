@@ -1,0 +1,186 @@
+<?php
+
+/**
+ * @file
+ * Extends functionality of the pathauto contrib module.
+ *
+ * @codeCoverageIgnore Covered by functional tests.
+ */
+
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Session\AccountInterface;
+use Drupal\Core\Field\BaseFieldDefinition;
+use Drupal\Core\Entity\EntityTypeInterface;
+
+/**
+ * Implements hook_cron().
+ *
+ * Bulk updates path aliases.
+ *
+ * Our pathauto pattern is based on parent menu items.
+ *
+ * When updating the menu item of a parent (either from node/%/edit or from
+ * admin/structure/menu/manage/main), pathauto will not update the alias of the
+ * children.
+ *
+ * As a workaround we update path aliases in cron.
+ *
+ * @see https://www.drupal.org/project/pathauto/issues/3068943
+ * @see config/install/pathauto.pattern.alias_hierarchy.yml
+ * @see Drupal\pathauto\Form\PathautoBulkUpdateForm
+ * @see Drupal\pathauto\Commands\PathautoCommands::generateAliases()
+ */
+function alias_hierarchy_cron(): void {
+  $batch = [
+    'title' => t('Bulk updating URL aliases'),
+    'operations' => [
+      ['Drupal\pathauto\Form\PathautoBulkUpdateForm::batchStart', []],
+      ['Drupal\pathauto\Form\PathautoBulkUpdateForm::batchProcess',
+        [
+          "canonical_entities:node",
+          "update",
+        ],
+      ],
+    ],
+    'finished' => 'Drupal\pathauto\Form\PathautoBulkUpdateForm::batchFinished',
+    'progressive' => FALSE,
+  ];
+
+  batch_set($batch);
+  if (PHP_SAPI === 'cli') {
+    drush_backend_batch_process();
+  }
+}
+
+/**
+ * Implements hook_entity_bundle_field_info().
+ *
+ * Register our 'Custom alias' field (only for content types that do use our
+ * pattern).
+ */
+function alias_hierarchy_entity_bundle_field_info(EntityTypeInterface $entity_type, $bundle, array $base_field_definitions) {
+  if ($entity_type->id() == 'node') {
+    $pattern = \Drupal::entityTypeManager()->getStorage('pathauto_pattern')->load('alias_hierarchy');
+    $criteria = $pattern->get('selection_criteria');
+    $entity_bundle_node_criterion = [];
+    foreach ($criteria as $criterion) {
+      if ($criterion['id'] == 'entity_bundle:node') {
+        $entity_bundle_node_criterion = $criterion;
+      }
+    }
+    // Empty bundles in the 'entity_bundle:node' criterion means our pattern
+    // applies to all content types.
+    if (empty($entity_bundle_node_criterion['bundles']) || in_array($bundle, $entity_bundle_node_criterion['bundles'])) {
+      return alias_hierarchy_entity_field_storage_info($entity_type);
+    }
+  }
+}
+
+/**
+ * Implements hook_entity_field_storage_info().
+ *
+ * Provide storage for our 'Custom alias' field.
+ */
+function alias_hierarchy_entity_field_storage_info(EntityTypeInterface $entity_type) {
+  if ($entity_type->id() == 'node') {
+    $fields = [];
+    $fields['alias_hierarchy_custom_alias'] = BaseFieldDefinition::create('string')
+      ->setLabel(t('Custom alias'))
+      ->setDescription(t('Enter a custom path. For instance, type "about" when writing an about page. If a custom path is not defined, one will automatically be generated using the menu link title. If both the custom path and menu link title are not defined, the node title will be used as a default.'))
+      ->setRevisionable(TRUE)
+      ->setTranslatable(TRUE)
+      ->setDisplayOptions('form', ['type' => 'alias_hierarchy']);
+    return $fields;
+  }
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ *
+ * Alter forms node/add/%type and node/%nid/edit.
+ */
+function alias_hierarchy_form_node_form_alter(array &$form, FormStateInterface $form_state): void {
+  // Only alter node types that use our 'alias_hierarchy' pathauto pattern.
+  if (empty($form['alias_hierarchy_custom_alias'])) {
+    return;
+  }
+
+  // Only alter form if the user already has access to the original fieldset
+  // 'URL alias' provided by core (i.e. the user either has permission 'create
+  // url aliases' or 'administer url aliases').
+  if (empty($form['path']) || $form['path']['#access'] === FALSE) {
+    return;
+  }
+
+  // Disable access to the original 'URL alias' fieldset provided by the core
+  // path module and altered by pathauto.
+  $form['path']['#access'] = FALSE;
+
+  // Add our own 'URL alias' fieldset.
+  $form['alias_hierarchy'] = [
+    '#type' => 'details',
+    '#title' => t('URL alias'),
+     // Same weight as original 'URL alias' fieldset provided by Drupal core.
+     // @see PathWidget::formElement()
+    '#weight' => 30,
+    // Automatically open fieldset to reveal custom alias, if one exists.
+    '#open' => !empty($form['alias_hierarchy_custom_alias']['widget'][0]['value']['#default_value']),
+    '#group' => 'advanced',
+    '#attributes' => [
+      'class' => ['alias-hierarchy-form'],
+    ],
+  ];
+
+  // Move our custom field to our own 'URL alias' fieldset.
+  $form['alias_hierarchy_custom_alias']['#group'] = 'alias_hierarchy';
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Alter pathauto form at admin/config/search/path/patterns/%.
+ */
+function alias_hierarchy_form_pathauto_pattern_form_alter(array &$form, FormStateInterface $form_state): void {
+  // Affect only the pattern provided by this module.
+  /** @var Drupal\pathauto\Form\PatternEditForm  */
+  $form_object = $form_state->getFormObject();
+  /** @var Drupal\pathauto\Entity\PathautoPattern */
+  $pattern = $form_object->getEntity();
+  if ($pattern->id() != 'alias_hierarchy') {
+    return;
+  }
+
+  // Prevent editing the details of the pattern, as the UI assumes we are using
+  // the original pattern provided by this module.
+  // @see alias_hierarchy_form_node_form_alter().
+  $form['pattern_container']['pattern']['#disabled'] = TRUE;
+  $form['label']['#disabled'] = TRUE;
+
+  // Clear field definitions when updating our pattern so our field shows up
+  // in the right bundles.
+  // Form submit handlers do not seem to support callbacks using the service
+  // notation ('entity_field.manager::clearCachedFieldDefinitions') so we use a
+  // dedicated function.
+  // @see alias_hierarchy_entity_bundle_field_info()
+  $form['actions']['submit']['#submit'][] = '_alias_hierarchy_clear_cached_field_definitions';
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_access().
+ *
+ * Disallow deleting our pathauto pattern.
+ */
+function alias_hierarchy_pathauto_pattern_access(EntityInterface $entity, $operation, AccountInterface $account) {
+  if ($entity->id() == 'alias_hierarchy' && $operation == 'delete') {
+    return AccessResult::forbidden();
+  }
+}
+
+/**
+ * Clear cached field definitions.
+ */
+function _alias_hierarchy_clear_cached_field_definitions(): void {
+  \Drupal::service('entity_field.manager')->clearCachedFieldDefinitions();
+}

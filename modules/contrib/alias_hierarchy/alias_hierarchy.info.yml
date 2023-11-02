@@ -1,0 +1,13 @@
+name: Alias Hierarchy
+type: module
+description: "Provides a pathauto pattern that mimics the hierarchy of nodes in the menu system."
+core_version_requirement: ^9
+dependencies:
+  - drupal:menu_ui
+  - drupal:node
+  - pathauto:pathauto
+
+# Information added by Drupal.org packaging script on 2022-09-07
+version: '1.0.0-rc5'
+project: 'alias_hierarchy'
+datestamp: 1662577624

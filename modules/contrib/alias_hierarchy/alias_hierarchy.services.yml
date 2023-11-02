@@ -1,0 +1,5 @@
+services:
+  alias_hierarchy.event_subscriber:
+    class: Drupal\alias_hierarchy\EventSubscriber\AliasHierarchyEventSubscriber
+    tags:
+      - { name: event_subscriber }

@@ -1,0 +1,26 @@
+<?php
+
+/**
+ * @file
+ * Install hooks for module alias_hierarchy.
+ *
+ * @codeCoverageIgnore Covered by functional tests.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function alias_hierarchy_install(): void {
+  // Weight should be higher than pathauto as we override its behaviour.
+  $extension_config = \Drupal::configFactory()->get('core.extension');
+  $pathauto_weight = $extension_config->get('module.pathauto');
+  module_set_weight('alias_hierarchy', $pathauto_weight + 1);
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function alias_hierarchy_uninstall(): void {
+  // Delete our pathauto pattern.
+  \Drupal::entityTypeManager()->getStorage('pathauto_pattern')->load('alias_hierarchy')->delete();
+}

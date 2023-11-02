@@ -1,0 +1,16 @@
+name: Demo
+type: theme
+base theme: false
+description: "Demo theme"
+package: custom
+version: '1.0.9'
+core_version_requirement: ^9
+libraries:
+  - demo/global-styling
+regions:
+  header: Header
+  menu: Menu
+  content: Content
+  footer: Footer
+  primary_menu: 'Primary menu'
+  secondary_menu: 'Secondary menu'

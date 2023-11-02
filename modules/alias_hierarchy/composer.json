@@ -1,0 +1,28 @@
+{
+    "name": "drupal/alias_hierarchy",
+    "description": "Provides a pathauto pattern that mimics the hierarchy of nodes in the menu system.",
+    "type": "drupal-module",
+    "homepage": "https://www.drupal.org/project/alias_hierarchy",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "fengtan",
+            "homepage": "https://www.drupal.org/u/fengtan"
+        },
+        {
+            "name": "djac",
+            "homepage": "https://www.drupal.org/u/djac"
+        },
+        {
+            "name": "iwayMan",
+            "homepage": "https://www.drupal.org/u/iwayman"
+        }
+    ],
+    "support": {
+        "issues": "https://www.drupal.org/project/issues/alias_hierarchy",
+        "source": "http://git.drupal.org/project/alias_hierarchy.git"
+    },
+    "require": {
+        "drupal/pathauto": "^1.10"
+    }
+}

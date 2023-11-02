@@ -1,0 +1,13 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - node
+id: alias_hierarchy
+label: 'Alias Hierarchy'
+type: 'canonical_entities:node'
+pattern: '[node:alias-hierarchy-parents:join-path]/[node:alias-hierarchy-alias]'
+selection_criteria: {  }
+selection_logic: and
+weight: 0
+relationships: {  }
